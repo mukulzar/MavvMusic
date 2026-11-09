@@ -1,8 +1,15 @@
 package com.mavvmusic.feature.player
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.app.NotificationCompat
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -95,6 +102,16 @@ class MavvPlaybackService : MediaSessionService() {
         mediaSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val notification = buildPlaceholderNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                PLACEHOLDER_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            )
+        } else {
+            startForeground(PLACEHOLDER_NOTIFICATION_ID, notification)
+        }
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_PLAY -> playFromIntent(intent)
@@ -104,6 +121,26 @@ class MavvPlaybackService : MediaSessionService() {
             ACTION_SKIP -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
         }
         return START_NOT_STICKY
+    }
+
+    private fun buildPlaceholderNotification(): Notification {
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.createNotificationChannel(
+                NotificationChannel(
+                    PLAYBACK_CHANNEL_ID,
+                    "Playback",
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
+            )
+        }
+        return NotificationCompat.Builder(this, PLAYBACK_CHANNEL_ID)
+            .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+            .setContentTitle("MavvMusic")
+            .setContentText("Preparing playback...")
+            .setOngoing(true)
+            .build()
     }
 
     override fun onDestroy() {
@@ -218,6 +255,8 @@ class MavvPlaybackService : MediaSessionService() {
         const val EXTRA_URI = "uri"
         const val EXTRA_CACHE_ON_PLAY = "cache_on_play"
         const val EXTRA_POSITION_MS = "position_ms"
+        private const val PLACEHOLDER_NOTIFICATION_ID = 1001
+        private const val PLAYBACK_CHANNEL_ID = "mavv_playback_channel"
         private const val HTTP_FORBIDDEN = 403
         private const val POSITION_UPDATE_INTERVAL_MS = 500L
     }
