@@ -45,7 +45,6 @@ class CacheTrackUseCase(
 
 class PlayTrackUseCase(
     private val resolveStream: ResolveStreamUseCase,
-    private val cacheTrack: CacheTrackUseCase,
     private val cache: CacheRepository,
     private val settings: SettingsRepository,
     private val playback: PlaybackRepository,
@@ -54,27 +53,9 @@ class PlayTrackUseCase(
         val trackId = track.id
         val cachedTrack = cache.getCachedTrack(trackId)
         val autoCacheOnPlay = settings.settings.value.autoCacheOnPlay
-        val playableUri = if (cachedTrack != null) {
-            cachedTrack.filePath
-        } else {
-            val stream = resolveStream(trackId)
-            if (autoCacheOnPlay) {
-                try {
-                    cacheTrack(track, stream).filePath
-                } catch (error: StreamHttpException) {
-                    if (error.statusCode != HTTP_FORBIDDEN) throw error
-                    cacheTrack(track, resolveStream(trackId)).filePath
-                }
-            } else {
-                stream.uri
-            }
-        }
-        val cacheStatus = if (cachedTrack != null || autoCacheOnPlay) {
-            CacheStatus.CACHED
-        } else {
-            CacheStatus.NOT_CACHED
-        }
-        playback.play(track, playableUri, cacheStatus)
+        val playableUri = cachedTrack?.filePath ?: resolveStream(trackId).uri
+        val cacheStatus = if (cachedTrack != null) CacheStatus.CACHED else CacheStatus.NOT_CACHED
+        playback.play(track, playableUri, cacheStatus, cachedTrack == null && autoCacheOnPlay)
         return track
     }
 }
@@ -120,5 +101,3 @@ class ClearCacheUseCase(
 ) {
     suspend operator fun invoke() = cache.clear()
 }
-
-private const val HTTP_FORBIDDEN = 403

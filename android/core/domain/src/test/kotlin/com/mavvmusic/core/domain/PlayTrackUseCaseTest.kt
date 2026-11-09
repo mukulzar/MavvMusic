@@ -30,7 +30,7 @@ class PlayTrackUseCaseTest {
     }
 
     @Test
-    fun forbiddenCacheDownloadResolvesFreshStreamAndRetriesOnce() = runBlocking {
+    fun playbackStartsWithRemoteStreamWithoutWaitingForFullCacheDownload() = runBlocking {
         val track = Track(
             id = "track-id",
             title = "Track",
@@ -44,7 +44,6 @@ class PlayTrackUseCaseTest {
         val playback = RecordingPlaybackRepository()
         val useCase = PlayTrackUseCase(
             resolveStream = ResolveStreamUseCase(resolver),
-            cacheTrack = CacheTrackUseCase(cache),
             cache = cache,
             settings = object : SettingsRepository {
                 override val settings = MutableStateFlow(MusicSettings(autoCacheOnPlay = true))
@@ -55,11 +54,11 @@ class PlayTrackUseCaseTest {
 
         useCase(track)
 
-        assertEquals(2, resolver.calls)
-        assertEquals(2, cache.cacheCalls)
-        assertEquals("stream-2", cache.cachedStreamUri)
-        assertEquals("file:///cached/track-id.audio", playback.playedUri)
-        assertEquals(CacheStatus.CACHED, playback.playedCacheStatus)
+        assertEquals(1, resolver.calls)
+        assertEquals(0, cache.cacheCalls)
+        assertEquals("stream-1", playback.playedUri)
+        assertEquals(CacheStatus.NOT_CACHED, playback.playedCacheStatus)
+        assertEquals(true, playback.cacheOnPlay)
     }
 
     private class FakeStreamResolver : StreamResolver {
@@ -91,10 +90,17 @@ class PlayTrackUseCaseTest {
         override val state = MutableStateFlow(PlaybackState())
         var playedUri: String? = null
         var playedCacheStatus: CacheStatus? = null
+        var cacheOnPlay = false
 
-        override suspend fun play(track: Track, playableUri: String, cacheStatus: CacheStatus) {
+        override suspend fun play(
+            track: Track,
+            playableUri: String,
+            cacheStatus: CacheStatus,
+            cacheOnPlay: Boolean,
+        ) {
             playedUri = playableUri
             playedCacheStatus = cacheStatus
+            this.cacheOnPlay = cacheOnPlay
         }
 
         override fun pause() = Unit

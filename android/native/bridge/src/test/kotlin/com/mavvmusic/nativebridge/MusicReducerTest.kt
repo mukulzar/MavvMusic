@@ -36,6 +36,17 @@ class MusicReducerTest {
     }
 
     @Test
+    fun playbackTickOnlyMatchesPositionDurationAndPlayingChanges() {
+        val previous = PlayerState(playback = PlaybackState(positionMs = 100, durationMs = 900))
+        val positionTick = previous.copy(
+            playback = previous.playback.copy(positionMs = 600, isPlaying = true),
+        )
+
+        assertTrue(isPlaybackTickOnly(previous, positionTick))
+        assertFalse(isPlaybackTickOnly(previous, positionTick.copy(isLoading = true)))
+    }
+
+    @Test
     fun playerFailureIsExposedOnPlaybackState() {
         val failed = PlayerReducer.reduce(
             PlayerState(isLoading = true),

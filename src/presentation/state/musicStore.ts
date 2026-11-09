@@ -5,6 +5,8 @@ import {
   subscribeToNativeMusic,
   type MusicAppState,
   type MusicEffect,
+  type PlaybackTick,
+  type PlayerState,
 } from '../../native/MusicBridge';
 
 const initialState: MusicAppState = {
@@ -72,6 +74,17 @@ export const useMusicStore = create<MusicStore>((set) => ({
     try {
       removeNativeListeners = subscribeToNativeMusic(
         (state) => set({ state, bridgeError: null }),
+        (player: PlayerState) => set((current) => ({
+          state: { ...current.state, player },
+          bridgeError: null,
+        })),
+        (tick: PlaybackTick) => set((current) => ({
+          state: {
+            ...current.state,
+            player: { ...current.state.player, ...tick },
+          },
+          bridgeError: null,
+        })),
         (effect: MusicEffect) => {
           if (effect.type === 'showError') set({ notice: effect.message });
           if (effect.type === 'openPlayerSheet') set({ playerExpanded: true });

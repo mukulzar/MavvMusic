@@ -56,6 +56,15 @@ data class PlayerState(
     val error: String? = null,
 )
 
+internal fun isPlaybackTickOnly(previous: PlayerState, current: PlayerState): Boolean =
+    previous.copy(
+        playback = previous.playback.copy(
+            positionMs = current.playback.positionMs,
+            durationMs = current.playback.durationMs,
+            isPlaying = current.playback.isPlaying,
+        ),
+    ) == current
+
 data class CacheState(
     val cachedTrackIds: Set<String> = emptySet(),
     val isClearing: Boolean = false,

@@ -32,10 +32,33 @@ class MavvMusicModule(
     override fun initialize() {
         super.initialize()
         stateJob = scope.launch {
+            var previousState: MusicAppState? = null
             viewModel.state.collect { state ->
-                emit(STATE_EVENT, Arguments.createMap().apply {
-                    putString("stateJson", state.toJson().toString())
-                })
+                val previous = previousState
+                val payload = when {
+                    previous == null ||
+                        previous.home != state.home ||
+                        previous.search != state.search ||
+                        previous.cache != state.cache ||
+                        previous.settings != state.settings -> {
+                        Arguments.createMap().apply {
+                            putString("stateJson", state.toJson().toString())
+                        }
+                    }
+                    previous.player != state.player && isPlaybackTickOnly(previous.player, state.player) -> {
+                        Arguments.createMap().apply {
+                            putString("playbackJson", state.player.playbackTickToJson().toString())
+                        }
+                    }
+                    previous.player != state.player -> {
+                        Arguments.createMap().apply {
+                            putString("playerJson", state.player.toJson().toString())
+                        }
+                    }
+                    else -> null
+                }
+                previousState = state
+                if (payload != null) emit(STATE_EVENT, payload)
             }
         }
         effectJob = scope.launch {
@@ -113,15 +136,7 @@ private fun MusicAppState.toJson() = JSONObject().apply {
         put("isLoading", search.isLoading)
         put("error", search.error)
     })
-    put("player", JSONObject().apply {
-        put("currentTrack", player.playback.currentTrack?.toJson())
-        put("isPlaying", player.playback.isPlaying)
-        put("positionMs", player.playback.positionMs)
-        put("durationMs", player.playback.durationMs)
-        put("cacheStatus", player.playback.cacheStatus.name.lowercase())
-        put("isLoading", player.isLoading)
-        put("error", player.error)
-    })
+    put("player", player.toJson())
     put("cache", JSONObject().apply {
         put("cachedTrackIds", JSONArray(cache.cachedTrackIds.toList()))
         put("isClearing", cache.isClearing)
@@ -132,6 +147,22 @@ private fun MusicAppState.toJson() = JSONObject().apply {
         put("isSaving", settings.isSaving)
         put("error", settings.error)
     })
+}
+
+private fun PlayerState.toJson() = JSONObject().apply {
+    put("currentTrack", playback.currentTrack?.toJson())
+    put("isPlaying", playback.isPlaying)
+    put("positionMs", playback.positionMs)
+    put("durationMs", playback.durationMs)
+    put("cacheStatus", playback.cacheStatus.name.lowercase())
+    put("isLoading", isLoading)
+    put("error", error)
+}
+
+private fun PlayerState.playbackTickToJson() = JSONObject().apply {
+    put("positionMs", playback.positionMs)
+    put("durationMs", playback.durationMs)
+    put("isPlaying", playback.isPlaying)
 }
 
 private fun Track.toJson() = JSONObject().apply {

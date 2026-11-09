@@ -89,17 +89,12 @@ object AppModule {
     fun provideResolveStreamUseCase(resolver: StreamResolver) = ResolveStreamUseCase(resolver)
 
     @Provides
-    fun provideCacheTrackUseCase(cache: CacheRepository) =
-        com.mavvmusic.core.domain.CacheTrackUseCase(cache)
-
-    @Provides
     fun providePlayTrackUseCase(
         resolveStream: ResolveStreamUseCase,
-        cacheTrack: com.mavvmusic.core.domain.CacheTrackUseCase,
         cache: CacheRepository,
         settings: SettingsRepository,
         playback: PlaybackRepository,
-    ) = PlayTrackUseCase(resolveStream, cacheTrack, cache, settings, playback)
+    ) = PlayTrackUseCase(resolveStream, cache, settings, playback)
 
     @Provides
     fun providePausePlaybackUseCase(playback: PlaybackRepository) = PausePlaybackUseCase(playback)

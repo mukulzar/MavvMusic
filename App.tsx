@@ -140,7 +140,25 @@ function AppSurface() {
     line: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(78,69,91,0.09)',
   }), [isDark]);
 
-  const music = useMusicStore((store) => store.state);
+  const homeTracks = useMusicStore((store) => store.state.home.tracks);
+  const homeIsLoading = useMusicStore((store) => store.state.home.isLoading);
+  const homeError = useMusicStore((store) => store.state.home.error);
+  const homeActiveFilter = useMusicStore((store) => store.state.home.activeFilter);
+  const homeLikedTrackIds = useMusicStore((store) => store.state.home.likedTrackIds);
+  const homeLibraryFilter = useMusicStore((store) => store.state.home.libraryFilter);
+  const searchQuery = useMusicStore((store) => store.state.search.query);
+  const searchResults = useMusicStore((store) => store.state.search.results);
+  const searchIsLoading = useMusicStore((store) => store.state.search.isLoading);
+  const searchError = useMusicStore((store) => store.state.search.error);
+  const currentPlayerTrack = useMusicStore((store) => store.state.player.currentTrack);
+  const isPlaying = useMusicStore((store) => store.state.player.isPlaying);
+  const playerCacheStatus = useMusicStore((store) => store.state.player.cacheStatus);
+  const cachedTrackIds = useMusicStore((store) => store.state.cache.cachedTrackIds);
+  const cacheIsClearing = useMusicStore((store) => store.state.cache.isClearing);
+  const cacheError = useMusicStore((store) => store.state.cache.error);
+  const autoCacheOnPlay = useMusicStore((store) => store.state.settings.autoCacheOnPlay);
+  const settingsIsSaving = useMusicStore((store) => store.state.settings.isSaving);
+  const settingsError = useMusicStore((store) => store.state.settings.error);
   const connect = useMusicStore((store) => store.connect);
   const dispatch = useMusicStore((store) => store.dispatch);
   const bridgeError = useMusicStore((store) => store.bridgeError);
@@ -154,10 +172,6 @@ function AppSurface() {
   useEffect(() => {
     connect();
   }, [connect]);
-
-  useEffect(() => {
-    console.log("RN STATE UPDATE - Search Results:", music.search.results.length, "Query:", music.search.query);
-    }, [music.search.results, music.search.query]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -175,12 +189,12 @@ function AppSurface() {
     return () => subscription.remove();
   }, [activeTab, playerExpanded, setPlayerExpanded]);
 
-  const feed = music.home.tracks;
-  const currentTrack = music.player.currentTrack ?? feed[0] ?? null;
-  const likedIds = music.home.likedTrackIds;
+  const feed = homeTracks;
+  const currentTrack = currentPlayerTrack ?? feed[0] ?? null;
+  const likedIds = homeLikedTrackIds;
   const likedTracks = feed.filter((track) => likedIds.includes(track.id));
-  const cachedTracks = feed.filter((track) => music.cache.cachedTrackIds.includes(track.id));
-  const libraryFilter = music.home.libraryFilter;
+  const cachedTracks = feed.filter((track) => cachedTrackIds.includes(track.id));
+  const libraryFilter = homeLibraryFilter;
   const visibleLibraryTracks = libraryFilter === 'Liked'
     ? likedTracks
     : libraryFilter === 'Downloaded'
@@ -195,8 +209,8 @@ function AppSurface() {
   };
 
   const togglePlayback = () => {
-    if (music.player.isPlaying) dispatch('player.pause');
-    else if (music.player.currentTrack) dispatch('player.resume');
+    if (isPlaying) dispatch('player.pause');
+    else if (currentPlayerTrack) dispatch('player.resume');
     else playTrack();
   };
 
@@ -243,9 +257,9 @@ function AppSurface() {
                   <Pressable key={filter} onPress={() => {
                     dispatch('home.filterChanged', { filter });
                   }} style={[styles.filterPill, { borderColor: theme.line, backgroundColor: theme.surfaceAlt },
-                    music.home.activeFilter === filter && styles.filterPillActive]}
-                    accessibilityRole="button" accessibilityState={{ selected: music.home.activeFilter === filter }}>
-                    <Text style={[styles.filterText, { color: theme.muted }, music.home.activeFilter === filter && styles.filterTextActive]}>
+                    homeActiveFilter === filter && styles.filterPillActive]}
+                    accessibilityRole="button" accessibilityState={{ selected: homeActiveFilter === filter }}>
+                    <Text style={[styles.filterText, { color: theme.muted }, homeActiveFilter === filter && styles.filterTextActive]}>
                       {filter}
                     </Text>
                   </Pressable>
@@ -262,8 +276,8 @@ function AppSurface() {
             {activeTab === 'Home' && (
               <HomeScreen
                 tracks={feed}
-                loading={music.home.isLoading}
-                error={music.home.error}
+                loading={homeIsLoading}
+                error={homeError}
                 theme={theme}
                 onPlay={playTrack}
                 onOpenSearch={() => navigate('Search')}
@@ -272,10 +286,10 @@ function AppSurface() {
             )}
             {activeTab === 'Search' && (
               <SearchScreen
-                query={music.search.query}
-                results={music.search.results}
-                loading={music.search.isLoading}
-                error={music.search.error}
+                query={searchQuery}
+                results={searchResults}
+                loading={searchIsLoading}
+                error={searchError}
                 theme={theme}
                 likedIds={likedIds}
                 onQueryChange={(query) => dispatch('search.queryChanged', { query })}
@@ -302,11 +316,11 @@ function AppSurface() {
             {activeTab === 'Settings' && (
               <SettingsScreen
                 cacheCount={cachedTracks.length}
-                isClearing={music.cache.isClearing}
-                cacheError={music.cache.error}
-                autoCacheOnPlay={music.settings.autoCacheOnPlay}
-                isSavingSettings={music.settings.isSaving}
-                settingsError={music.settings.error}
+                isClearing={cacheIsClearing}
+                cacheError={cacheError}
+                autoCacheOnPlay={autoCacheOnPlay}
+                isSavingSettings={settingsIsSaving}
+                settingsError={settingsError}
                 theme={theme}
                 onClear={() => dispatch('cache.clear')}
                 onAutoCacheChange={(enabled) => dispatch('settings.autoCacheChanged', { enabled })}
@@ -316,7 +330,7 @@ function AppSurface() {
 
           {!expanded && (
             <View style={[styles.mobileDock, { bottom: Math.max(insets.bottom, 8) }]}>
-              <MiniPlayer track={currentTrack} isPlaying={music.player.isPlaying}
+              <MiniPlayer track={currentTrack} isPlaying={isPlaying}
                 liked={currentTrack ? likedIds.includes(currentTrack.id) : false} theme={theme}
                 onOpen={() => setPlayerExpanded(true)} onToggle={togglePlayback}
                 onNext={() => dispatch('player.next')}
@@ -332,7 +346,7 @@ function AppSurface() {
 
           {expanded && (
             <View style={[styles.tabletPlayer, { bottom: Math.max(insets.bottom, 12) }]}>
-              <MiniPlayer track={currentTrack} isPlaying={music.player.isPlaying}
+              <MiniPlayer track={currentTrack} isPlaying={isPlaying}
                 liked={currentTrack ? likedIds.includes(currentTrack.id) : false} theme={theme}
                 onOpen={() => setPlayerExpanded(true)} onToggle={togglePlayback}
                 onNext={() => dispatch('player.next')}
@@ -356,21 +370,15 @@ function AppSurface() {
                 <Image source={{ uri: currentTrack.artworkUri ?? photos.album }} style={styles.sheetArtwork as ImageStyle} />
                 <Text style={[styles.sheetTitle, { color: theme.ink }]} numberOfLines={1}>{currentTrack.title}</Text>
                 <Text style={[styles.bodyMuted, { color: theme.muted }]}>{currentTrack.artist} · {currentTrack.album}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, {
-                    width: `${music.player.durationMs > 0
-                      ? Math.min(100, (music.player.positionMs / music.player.durationMs) * 100)
-                      : 0}%`,
-                  }]} />
-                </View>
+                <PlayerProgress />
                 <View style={styles.playerActions}>
                   <Pressable style={styles.sheetControl} onPress={() => dispatch('player.next')}
                     accessibilityRole="button" accessibilityLabel="Next track">
                     <Icon name="next" size={26} color={theme.ink} />
                   </Pressable>
                   <Pressable style={styles.sheetPlay} onPress={togglePlayback}
-                    accessibilityRole="button" accessibilityLabel={music.player.isPlaying ? 'Pause' : 'Play'}>
-                    <Icon name={music.player.isPlaying ? 'pause' : 'play'} size={25} color="#fff" />
+                    accessibilityRole="button" accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+                    <Icon name={isPlaying ? 'pause' : 'play'} size={25} color="#fff" />
                   </Pressable>
                   <Pressable style={styles.sheetControl} onPress={() => currentTrack && dispatch('library.toggleLiked', { trackId: currentTrack.id })}
                     accessibilityRole="button" accessibilityLabel={currentTrack && likedIds.includes(currentTrack.id) ? 'Unlike track' : 'Like track'}>
@@ -378,9 +386,9 @@ function AppSurface() {
                   </Pressable>
                 </View>
                 <Text style={[styles.cacheNote, { color: theme.muted }]}>
-                  {music.player.cacheStatus === 'cached'
+                  {playerCacheStatus === 'cached'
                     ? 'Available offline'
-                    : music.settings.autoCacheOnPlay
+                    : autoCacheOnPlay
                       ? 'Caching for offline listening'
                       : 'Auto-cache is turned off'}
                 </Text>
@@ -400,6 +408,19 @@ function AppSurface() {
         </Pressable>
       )}
     </SafeAreaView>
+  );
+}
+
+function PlayerProgress() {
+  const positionMs = useMusicStore((store) => store.state.player.positionMs);
+  const durationMs = useMusicStore((store) => store.state.player.durationMs);
+
+  return (
+    <View style={styles.progressTrack}>
+      <View style={[styles.progressFill, {
+        width: `${durationMs > 0 ? Math.min(100, (positionMs / durationMs) * 100) : 0}%`,
+      }]} />
+    </View>
   );
 }
 
@@ -496,7 +517,6 @@ function SearchScreen({
   onLike: (trackId: string) => void;
 }) {
   const [draftQuery, setDraftQuery] = useState(query);
-  console.log("SearchScreen RENDERING -> Results:", results.length, "| draftQuery:", draftQuery);
   const changeQuery = (nextQuery: string) => {
     setDraftQuery(nextQuery);
     onQueryChange(nextQuery);

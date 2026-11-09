@@ -43,6 +43,12 @@ export interface PlayerState {
   error: string | null;
 }
 
+export interface PlaybackTick {
+  positionMs: number;
+  durationMs: number;
+  isPlaying: boolean;
+}
+
 export interface CacheState {
   cachedTrackIds: string[];
   isClearing: boolean;
@@ -151,25 +157,36 @@ function trackArray(value: unknown, label: string): TrackState[] {
   return value.map(track);
 }
 
-export function parseMusicState(serialized: string): MusicAppState {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(serialized);
-  } catch {
-    throw new Error('The native music state could not be decoded.');
-  }
-
-  const source = record(decoded, 'app');
-  const home = record(source.home, 'home');
-  const search = record(source.search, 'search');
-  const player = record(source.player, 'player');
-  const cache = record(source.cache, 'cache');
-  const settings = record(source.settings, 'settings');
-  const cacheStatus = stringField(player, 'cacheStatus');
+function parsePlayer(source: Record<string, unknown>): PlayerState {
+  const cacheStatus = stringField(source, 'cacheStatus');
   if (!isCacheStatus(cacheStatus)) {
     throw new Error('The native player cache state is invalid.');
   }
-  const currentTrack = player.currentTrack == null ? null : track(player.currentTrack);
+  return {
+    currentTrack: source.currentTrack == null ? null : track(source.currentTrack),
+    isPlaying: booleanField(source, 'isPlaying'),
+    positionMs: numberField(source, 'positionMs'),
+    durationMs: numberField(source, 'durationMs'),
+    cacheStatus,
+    isLoading: booleanField(source, 'isLoading'),
+    error: nullableStringField(source, 'error'),
+  };
+}
+
+function decodeState(serialized: string): unknown {
+  try {
+    return JSON.parse(serialized);
+  } catch {
+    throw new Error('The native music state could not be decoded.');
+  }
+}
+
+export function parseMusicState(serialized: string): MusicAppState {
+  const source = record(decodeState(serialized), 'app');
+  const home = record(source.home, 'home');
+  const search = record(source.search, 'search');
+  const cache = record(source.cache, 'cache');
+  const settings = record(source.settings, 'settings');
 
   return {
     home: {
@@ -186,15 +203,7 @@ export function parseMusicState(serialized: string): MusicAppState {
       isLoading: booleanField(search, 'isLoading'),
       error: nullableStringField(search, 'error'),
     },
-    player: {
-      currentTrack,
-      isPlaying: booleanField(player, 'isPlaying'),
-      positionMs: numberField(player, 'positionMs'),
-      durationMs: numberField(player, 'durationMs'),
-      cacheStatus,
-      isLoading: booleanField(player, 'isLoading'),
-      error: nullableStringField(player, 'error'),
-    },
+    player: parsePlayer(record(source.player, 'player')),
     cache: {
       cachedTrackIds: stringArrayField(cache, 'cachedTrackIds'),
       isClearing: booleanField(cache, 'isClearing'),
@@ -205,6 +214,19 @@ export function parseMusicState(serialized: string): MusicAppState {
       isSaving: booleanField(settings, 'isSaving'),
       error: nullableStringField(settings, 'error'),
     },
+  };
+}
+
+export function parsePlayerState(serialized: string): PlayerState {
+  return parsePlayer(record(decodeState(serialized), 'player'));
+}
+
+export function parsePlaybackTick(serialized: string): PlaybackTick {
+  const source = record(decodeState(serialized), 'playback');
+  return {
+    positionMs: numberField(source, 'positionMs'),
+    durationMs: numberField(source, 'durationMs'),
+    isPlaying: booleanField(source, 'isPlaying'),
   };
 }
 
@@ -221,13 +243,26 @@ export function dispatchNativeIntent(
 
 export function subscribeToNativeMusic(
   onState: (state: MusicAppState) => void,
+  onPlayer: (player: PlayerState) => void,
+  onPlaybackTick: (tick: PlaybackTick) => void,
   onEffect: (effect: MusicEffect) => void,
 ): () => void {
   const module = requireNativeModule();
   const events = new NativeEventEmitter(module);
-  const stateSubscription = events.addListener('mavvMusic.state', (event: { stateJson?: string }) => {
-    if (typeof event.stateJson !== 'string') throw new Error('The native state event is invalid.');
-    onState(parseMusicState(event.stateJson));
+  const stateSubscription = events.addListener('mavvMusic.state', (value: Object) => {
+    if (typeof value !== 'object' || value === null) {
+      throw new Error('The native state event is invalid.');
+    }
+    const event = value as { stateJson?: unknown; playerJson?: unknown; playbackJson?: unknown };
+    if (typeof event.stateJson === 'string') {
+      onState(parseMusicState(event.stateJson));
+    } else if (typeof event.playerJson === 'string') {
+      onPlayer(parsePlayerState(event.playerJson));
+    } else if (typeof event.playbackJson === 'string') {
+      onPlaybackTick(parsePlaybackTick(event.playbackJson));
+    } else {
+      throw new Error('The native state event is invalid.');
+    }
   });
   const effectSubscription = events.addListener('mavvMusic.effect', (value: Object) => {
     if (typeof value !== 'object' || value === null) {

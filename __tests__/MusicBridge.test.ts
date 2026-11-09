@@ -1,4 +1,4 @@
-import { parseMusicState } from '../src/native/MusicBridge';
+import { parseMusicState, parsePlaybackTick, parsePlayerState } from '../src/native/MusicBridge';
 
 const stateFixture = {
   home: {
@@ -58,4 +58,20 @@ test('parses native state when a null current track is omitted from JSON', () =>
   };
 
   expect(parseMusicState(JSON.stringify(stateWithoutTrack)).player.currentTrack).toBeNull();
+});
+
+test('parses lightweight native playback ticks', () => {
+  expect(parsePlaybackTick(JSON.stringify({
+    positionMs: 1250,
+    durationMs: 180000,
+    isPlaying: true,
+  }))).toEqual({
+    positionMs: 1250,
+    durationMs: 180000,
+    isPlaying: true,
+  });
+});
+
+test('parses a player-only native update', () => {
+  expect(parsePlayerState(JSON.stringify(stateFixture.player))).toEqual(stateFixture.player);
 });

@@ -16,7 +16,12 @@ class Media3PlaybackRepository(
     private val appContext = context.applicationContext
     override val state: StateFlow<PlaybackState> = stateStore.state
 
-    override suspend fun play(track: Track, playableUri: String, cacheStatus: CacheStatus) {
+    override suspend fun play(
+        track: Track,
+        playableUri: String,
+        cacheStatus: CacheStatus,
+        cacheOnPlay: Boolean,
+    ) {
         stateStore.setCurrent(
             PlaybackState(
                 currentTrack = track,
@@ -31,6 +36,7 @@ class Media3PlaybackRepository(
             .putExtra(MavvPlaybackService.EXTRA_ARTIST, track.artist.name)
             .putExtra(MavvPlaybackService.EXTRA_ALBUM, track.album.title)
             .putExtra(MavvPlaybackService.EXTRA_URI, playableUri)
+            .putExtra(MavvPlaybackService.EXTRA_CACHE_ON_PLAY, cacheOnPlay)
         ContextCompat.startForegroundService(appContext, intent)
     }
 

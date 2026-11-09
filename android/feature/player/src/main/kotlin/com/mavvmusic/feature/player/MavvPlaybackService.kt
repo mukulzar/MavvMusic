@@ -4,11 +4,17 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.Cache
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.mavvmusic.core.domain.StreamResolver
@@ -27,11 +33,13 @@ class MavvPlaybackService : MediaSessionService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var playbackStateStore: PlaybackStateStore
     private lateinit var streamResolver: StreamResolver
+    private lateinit var mediaCache: Cache
     private lateinit var player: ExoPlayer
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var streamRefreshJob: Job? = null
     private var activeTrackId: String? = null
+    private var activeCacheOnPlay = false
     private val refreshedStreamUris = mutableSetOf<String>()
 
     private val positionTicker = object : Runnable {
@@ -77,6 +85,7 @@ class MavvPlaybackService : MediaSessionService() {
             PlaybackServiceEntryPoint::class.java,
         ).also { entryPoint ->
             streamResolver = entryPoint.streamResolver()
+            mediaCache = entryPoint.mediaCache()
         }.playbackStateStore()
         player = ExoPlayer.Builder(this).build().apply { addListener(listener) }
         mediaSession = MediaSession.Builder(this, player).build()
@@ -114,6 +123,7 @@ class MavvPlaybackService : MediaSessionService() {
             "The player service received no audio URI."
         }
         activeTrackId = intent.getStringExtra(EXTRA_TRACK_ID)
+        activeCacheOnPlay = intent.getBooleanExtra(EXTRA_CACHE_ON_PLAY, false)
         streamRefreshJob?.cancel()
         streamRefreshJob = null
         refreshedStreamUris.clear()
@@ -123,13 +133,13 @@ class MavvPlaybackService : MediaSessionService() {
             .setAlbumTitle(intent.getStringExtra(EXTRA_ALBUM).orEmpty())
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .build()
-        player.setMediaItem(
-            MediaItem.Builder()
+        val mediaItem = MediaItem.Builder()
                 .setMediaId(activeTrackId.orEmpty())
                 .setUri(uri)
                 .setMediaMetadata(metadata)
-                .build(),
-        )
+                .setCustomCacheKey(activeTrackId.orEmpty())
+                .build()
+        player.setMediaSource(createMediaSource(mediaItem))
         player.prepare()
         player.play()
     }
@@ -153,7 +163,7 @@ class MavvPlaybackService : MediaSessionService() {
                 val replacement = itemToRefresh.buildUpon()
                     .setUri(refreshedStream.uri)
                     .build()
-                player.setMediaItem(replacement, positionMs)
+                player.setMediaSource(createMediaSource(replacement), positionMs)
                 player.prepare()
                 if (wasPlaying) player.play() else player.pause()
             } catch (error: CancellationException) {
@@ -176,6 +186,25 @@ class MavvPlaybackService : MediaSessionService() {
             .any { it.responseCode == HTTP_FORBIDDEN }
     }
 
+    private fun createMediaSource(mediaItem: MediaItem): MediaSource {
+        val uri = mediaItem.localConfiguration?.uri
+        val useCache = activeCacheOnPlay &&
+            (uri?.scheme.equals("http", ignoreCase = true) ||
+                uri?.scheme.equals("https", ignoreCase = true))
+        val upstreamFactory = DefaultDataSource.Factory(this)
+        val dataSourceFactory: DataSource.Factory = if (useCache) {
+            CacheDataSource.Factory()
+                .setCache(mediaCache)
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            upstreamFactory
+        }
+        return DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(dataSourceFactory)
+            .createMediaSource(mediaItem)
+    }
+
     companion object {
         const val ACTION_PLAY = "com.mavvmusic.player.PLAY"
         const val ACTION_PAUSE = "com.mavvmusic.player.PAUSE"
@@ -187,6 +216,7 @@ class MavvPlaybackService : MediaSessionService() {
         const val EXTRA_ARTIST = "artist"
         const val EXTRA_ALBUM = "album"
         const val EXTRA_URI = "uri"
+        const val EXTRA_CACHE_ON_PLAY = "cache_on_play"
         const val EXTRA_POSITION_MS = "position_ms"
         private const val HTTP_FORBIDDEN = 403
         private const val POSITION_UPDATE_INTERVAL_MS = 500L
