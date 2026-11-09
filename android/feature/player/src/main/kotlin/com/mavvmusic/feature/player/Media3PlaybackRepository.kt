@@ -8,6 +8,8 @@ import com.mavvmusic.core.model.CacheStatus
 import com.mavvmusic.core.model.PlaybackState
 import com.mavvmusic.core.model.Track
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 class Media3PlaybackRepository(
     context: Context,
@@ -18,7 +20,8 @@ class Media3PlaybackRepository(
 
     override suspend fun play(
         track: Track,
-        playableUri: String,
+        queue: List<Track>,
+        cachedUri: String?,
         cacheStatus: CacheStatus,
         cacheOnPlay: Boolean,
     ) {
@@ -26,6 +29,7 @@ class Media3PlaybackRepository(
             PlaybackState(
                 currentTrack = track,
                 isPlaying = false,
+                isLoading = true,
                 durationMs = track.durationMs,
                 cacheStatus = cacheStatus,
             ),
@@ -35,8 +39,17 @@ class Media3PlaybackRepository(
             .putExtra(MavvPlaybackService.EXTRA_TITLE, track.title)
             .putExtra(MavvPlaybackService.EXTRA_ARTIST, track.artist.name)
             .putExtra(MavvPlaybackService.EXTRA_ALBUM, track.album.title)
-            .putExtra(MavvPlaybackService.EXTRA_URI, playableUri)
+            .putExtra(
+                MavvPlaybackService.EXTRA_QUEUE_IDS,
+                ArrayList(queue.map(Track::id).ifEmpty { listOf(track.id) }),
+            )
+            .putExtra(MavvPlaybackService.EXTRA_QUEUE_TRACKS, JSONArray().apply {
+                (queue.ifEmpty { listOf(track) }).forEach { queuedTrack ->
+                    put(queuedTrack.toJson())
+                }
+            }.toString())
             .putExtra(MavvPlaybackService.EXTRA_CACHE_ON_PLAY, cacheOnPlay)
+        if (cachedUri != null) intent.putExtra(MavvPlaybackService.EXTRA_URI, cachedUri)
         ContextCompat.startForegroundService(appContext, intent)
     }
 
@@ -61,4 +74,15 @@ class Media3PlaybackRepository(
 
     private fun serviceIntent(action: String) =
         Intent(appContext, MavvPlaybackService::class.java).setAction(action)
+
+    private fun Track.toJson() = JSONObject().apply {
+        put("id", id)
+        put("title", title)
+        put("artist", artist.name)
+        put("artistId", artist.id)
+        put("album", album.title)
+        put("albumId", album.id)
+        put("durationMs", durationMs)
+        put("artworkUri", artworkUri)
+    }
 }

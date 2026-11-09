@@ -1,7 +1,6 @@
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.kapt'
 }
 
 android {
@@ -11,6 +10,7 @@ android {
     defaultConfig {
         minSdk rootProject.ext.minSdkVersion
     }
+
 }
 
 dependencies {
@@ -18,11 +18,10 @@ dependencies {
     implementation project(':core:model')
     api "com.squareup.okhttp3:okhttp:$rootProject.ext.okhttpVersion"
     api "org.jetbrains.kotlinx:kotlinx-serialization-json:$rootProject.ext.serializationVersion"
-    api "com.github.TeamNewPipe:NewPipeExtractor:v0.26.5"
+    implementation "com.github.MetrolistGroup.innertubex:innertubex:v0.11.6"
+    implementation "com.github.TeamNewPipe:NewPipeExtractor:v0.26.5"
+    implementation "io.ktor:ktor-client-okhttp:3.6.0"
+    implementation "io.ktor:ktor-client-content-negotiation:3.6.0"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:3.6.0"
     implementation "com.google.dagger:hilt-android:$rootProject.ext.hiltVersion"
-    kapt "com.google.dagger:hilt-android-compiler:$rootProject.ext.hiltVersion"
-}
-
-kapt {
-    correctErrorTypes true
 }

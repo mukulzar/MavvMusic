@@ -155,7 +155,7 @@ private fun PlayerState.toJson() = JSONObject().apply {
     put("positionMs", playback.positionMs)
     put("durationMs", playback.durationMs)
     put("cacheStatus", playback.cacheStatus.name.lowercase())
-    put("isLoading", isLoading)
+    put("isLoading", playback.isLoading || isLoading)
     put("error", error)
 }
 

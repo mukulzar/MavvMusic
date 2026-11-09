@@ -14,6 +14,16 @@ class PlaybackStateStore {
         mutableState.value = state
     }
 
+    fun setLoading(isLoading: Boolean) {
+        mutableState.update { current ->
+            current.copy(
+                isLoading = isLoading,
+                isPlaying = if (isLoading) false else current.isPlaying,
+                error = if (isLoading) null else current.error,
+            )
+        }
+    }
+
     fun updatePosition(positionMs: Long, durationMs: Long, isPlaying: Boolean) {
         mutableState.update { current ->
             current.copy(
@@ -26,6 +36,8 @@ class PlaybackStateStore {
     }
 
     fun reportError(message: String) {
-        mutableState.update { it.copy(isPlaying = false, error = message) }
+        mutableState.update {
+            it.copy(isPlaying = false, isLoading = false, error = message)
+        }
     }
 }

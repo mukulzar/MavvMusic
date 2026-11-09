@@ -1,22 +1,19 @@
 package com.mavvmusic
 
 import android.app.Application
-import com.mavvmusic.core.data.network.OkHttpDownloader
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.mavvmusic.core.data.network.NewPipeInitializer
 import com.mavvmusic.nativebridge.MavvMusicPackage
 import dagger.hilt.android.HiltAndroidApp
-import okhttp3.OkHttpClient
-import org.schabi.newpipe.extractor.NewPipe
 import javax.inject.Inject
 
 @HiltAndroidApp
 class MainApplication : Application(), ReactApplication {
-  @Inject
-  lateinit var okHttpClient: OkHttpClient
+  @Inject lateinit var newPipeInitializer: NewPipeInitializer
 
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
@@ -31,7 +28,7 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
-    NewPipe.init(OkHttpDownloader(okHttpClient))
+    newPipeInitializer.initialize()
     loadReactNative(this)
   }
 }

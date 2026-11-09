@@ -46,7 +46,13 @@ interface SettingsRepository {
 interface PlaybackRepository {
     val state: StateFlow<PlaybackState>
 
-    suspend fun play(track: Track, playableUri: String, cacheStatus: CacheStatus, cacheOnPlay: Boolean)
+    suspend fun play(
+        track: Track,
+        queue: List<Track>,
+        cachedUri: String?,
+        cacheStatus: CacheStatus,
+        cacheOnPlay: Boolean,
+    )
     fun pause()
     fun resume()
     fun seek(positionMs: Long)

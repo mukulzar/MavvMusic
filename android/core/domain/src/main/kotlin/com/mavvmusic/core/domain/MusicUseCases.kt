@@ -44,18 +44,16 @@ class CacheTrackUseCase(
 }
 
 class PlayTrackUseCase(
-    private val resolveStream: ResolveStreamUseCase,
     private val cache: CacheRepository,
     private val settings: SettingsRepository,
     private val playback: PlaybackRepository,
 ) {
-    suspend operator fun invoke(track: Track): Track {
+    suspend operator fun invoke(track: Track, queue: List<Track>): Track {
         val trackId = track.id
         val cachedTrack = cache.getCachedTrack(trackId)
         val autoCacheOnPlay = settings.settings.value.autoCacheOnPlay
-        val playableUri = cachedTrack?.filePath ?: resolveStream(trackId).uri
         val cacheStatus = if (cachedTrack != null) CacheStatus.CACHED else CacheStatus.NOT_CACHED
-        playback.play(track, playableUri, cacheStatus, cachedTrack == null && autoCacheOnPlay)
+        playback.play(track, queue, cachedTrack?.filePath, cacheStatus, cachedTrack == null && autoCacheOnPlay)
         return track
     }
 }

@@ -36,6 +36,25 @@ class MusicReducerTest {
     }
 
     @Test
+    fun playerPlaybackUpdatePreservesStreamResolutionLoadingState() {
+        val loading = PlayerReducer.reduce(
+            PlayerState(),
+            PlayerIntent.PlaybackChanged(PlaybackState(isLoading = true)),
+        )
+
+        assertTrue(loading.isLoading)
+        assertTrue(loading.playback.isLoading)
+
+        val ready = PlayerReducer.reduce(
+            loading,
+            PlayerIntent.PlaybackChanged(PlaybackState(isPlaying = true)),
+        )
+
+        assertFalse(ready.isLoading)
+        assertFalse(ready.playback.isLoading)
+    }
+
+    @Test
     fun playbackTickOnlyMatchesPositionDurationAndPlayingChanges() {
         val previous = PlayerState(playback = PlaybackState(positionMs = 100, durationMs = 900))
         val positionTick = previous.copy(

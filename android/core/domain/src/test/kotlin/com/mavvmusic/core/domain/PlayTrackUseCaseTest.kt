@@ -30,7 +30,7 @@ class PlayTrackUseCaseTest {
     }
 
     @Test
-    fun playbackStartsWithRemoteStreamWithoutWaitingForFullCacheDownload() = runBlocking {
+    fun playbackReceivesTheSelectedTrackQueueWithoutBlockingOnDownload() = runBlocking {
         val track = Track(
             id = "track-id",
             title = "Track",
@@ -39,11 +39,9 @@ class PlayTrackUseCaseTest {
             durationMs = 180_000,
             artworkUri = null,
         )
-        val resolver = FakeStreamResolver()
         val cache = RetryingCacheRepository()
         val playback = RecordingPlaybackRepository()
         val useCase = PlayTrackUseCase(
-            resolveStream = ResolveStreamUseCase(resolver),
             cache = cache,
             settings = object : SettingsRepository {
                 override val settings = MutableStateFlow(MusicSettings(autoCacheOnPlay = true))
@@ -52,22 +50,13 @@ class PlayTrackUseCaseTest {
             playback = playback,
         )
 
-        useCase(track)
+        useCase(track, listOf(track))
 
-        assertEquals(1, resolver.calls)
         assertEquals(0, cache.cacheCalls)
-        assertEquals("stream-1", playback.playedUri)
+        assertEquals(null, playback.cachedUri)
         assertEquals(CacheStatus.NOT_CACHED, playback.playedCacheStatus)
         assertEquals(true, playback.cacheOnPlay)
-    }
-
-    private class FakeStreamResolver : StreamResolver {
-        var calls = 0
-
-        override suspend fun resolve(trackId: String): ResolvedStream {
-            calls += 1
-            return ResolvedStream("stream-$calls", null, null, null)
-        }
+        assertEquals(listOf(track), playback.queue)
     }
 
     private class RetryingCacheRepository : CacheRepository {
@@ -94,14 +83,19 @@ class PlayTrackUseCaseTest {
 
         override suspend fun play(
             track: Track,
-            playableUri: String,
+            queue: List<Track>,
+            cachedUri: String?,
             cacheStatus: CacheStatus,
             cacheOnPlay: Boolean,
         ) {
-            playedUri = playableUri
+            this.queue = queue
+            this.cachedUri = cachedUri
             playedCacheStatus = cacheStatus
             this.cacheOnPlay = cacheOnPlay
         }
+
+        var queue: List<Track> = emptyList()
+        var cachedUri: String? = null
 
         override fun pause() = Unit
         override fun resume() = Unit

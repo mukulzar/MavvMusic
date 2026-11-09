@@ -5,12 +5,12 @@ buildscript {
         compileSdkVersion = 37
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
-        kotlinVersion = "2.2.0"
+        kotlinVersion = "2.4.21"
         media3Version = "1.8.0"
-        roomVersion = "2.7.2"
+        roomVersion = "2.8.5"
         lifecycleVersion = "2.9.2"
         coroutinesVersion = "1.10.2"
-        hiltVersion = "2.56.2"
+        hiltVersion = "2.60.1"
         okhttpVersion = "4.12.0"
         serializationVersion = "1.8.1"
     }
@@ -21,13 +21,33 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
         classpath("com.google.dagger:hilt-android-gradle-plugin:$hiltVersion")
     }
 }
 
 subprojects {
     ext.set("react.newArchEnabled", "true")
+    configurations.configureEach {
+        if (name.startsWith("kapt")) {
+            resolutionStrategy.force "org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21"
+        }
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "https://jitpack.io"
+            content {
+                includeGroup "com.github.MetrolistGroup.innertubex"
+                includeGroup "com.github.MetrolistGroup.quackjs"
+                includeGroup "com.github.TeamNewPipe"
+            }
+        }
+    }
 }
 
 apply plugin: "com.facebook.react.rootproject"

@@ -157,18 +157,18 @@ object SearchReducer {
 object PlayerReducer {
     fun reduce(state: PlayerState, intent: PlayerIntent): PlayerState = when (intent) {
         is PlayerIntent.Play -> state.copy(
-            playback = state.playback.copy(error = null),
+            playback = state.playback.copy(isLoading = true, error = null),
             isLoading = true,
             error = null,
         )
         PlayerIntent.Pause, PlayerIntent.Resume, is PlayerIntent.Seek, PlayerIntent.Next -> state
         is PlayerIntent.PlaybackChanged -> state.copy(
             playback = intent.playback,
-            isLoading = false,
+            isLoading = intent.playback.isLoading,
             error = intent.playback.error,
         )
         is PlayerIntent.Failed -> state.copy(
-            playback = state.playback.copy(error = intent.message),
+            playback = state.playback.copy(isLoading = false, error = intent.message),
             isLoading = false,
             error = intent.message,
         )
@@ -270,8 +270,9 @@ class PlayerViewModel(
 
     private suspend fun play(track: Track, tracks: List<Track> = queue) {
         if (tracks.isNotEmpty()) queue = tracks
-        Log.d("MavvMusicPlay", "Executing resolve and play for: ${track.id}")
-        playTrack(track)
+        if (queue.isEmpty()) queue = listOf(track)
+        Log.d("MavvMusicPlay", "Starting playback for: ${track.id}")
+        playTrack(track, queue)
     }
 
     private suspend fun next() {

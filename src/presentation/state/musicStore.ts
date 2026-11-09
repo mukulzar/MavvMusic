@@ -75,7 +75,10 @@ export const useMusicStore = create<MusicStore>((set) => ({
       removeNativeListeners = subscribeToNativeMusic(
         (state) => set({ state, bridgeError: null }),
         (player: PlayerState) => set((current) => ({
-          state: { ...current.state, player },
+          state: {
+            ...current.state,
+            player: { ...current.state.player, ...player },
+          },
           bridgeError: null,
         })),
         (tick: PlaybackTick) => set((current) => ({

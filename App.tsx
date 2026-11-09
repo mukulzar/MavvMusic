@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   ImageBackground,
   BackHandler,
   Keyboard,
   Modal,
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StatusBar,
@@ -18,6 +19,7 @@ import {
   type ImageStyle,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { TrackState } from './src/native/MusicBridge';
 import { useMusicStore } from './src/presentation/state/musicStore';
@@ -152,6 +154,7 @@ function AppSurface() {
   const searchError = useMusicStore((store) => store.state.search.error);
   const currentPlayerTrack = useMusicStore((store) => store.state.player.currentTrack);
   const isPlaying = useMusicStore((store) => store.state.player.isPlaying);
+  const isPlayerLoading = useMusicStore((store) => store.state.player.isLoading);
   const playerCacheStatus = useMusicStore((store) => store.state.player.cacheStatus);
   const cachedTrackIds = useMusicStore((store) => store.state.cache.cachedTrackIds);
   const cacheIsClearing = useMusicStore((store) => store.state.cache.isClearing);
@@ -161,6 +164,10 @@ function AppSurface() {
   const settingsError = useMusicStore((store) => store.state.settings.error);
   const connect = useMusicStore((store) => store.connect);
   const dispatch = useMusicStore((store) => store.dispatch);
+  const onSearchQueryChange = useCallback(
+    (query: string) => dispatch('search.queryChanged', { query }),
+    [dispatch],
+  );
   const bridgeError = useMusicStore((store) => store.bridgeError);
   const notice = useMusicStore((store) => store.notice);
   const dismissNotice = useMusicStore((store) => store.dismissNotice);
@@ -292,7 +299,7 @@ function AppSurface() {
                 error={searchError}
                 theme={theme}
                 likedIds={likedIds}
-                onQueryChange={(query) => dispatch('search.queryChanged', { query })}
+                onQueryChange={onSearchQueryChange}
                 onPlay={playTrack}
                 onLike={(trackId) => dispatch('library.toggleLiked', { trackId })}
                 
@@ -330,7 +337,7 @@ function AppSurface() {
 
           {!expanded && (
             <View style={[styles.mobileDock, { bottom: Math.max(insets.bottom, 8) }]}>
-              <MiniPlayer track={currentTrack} isPlaying={isPlaying}
+              <MiniPlayer track={currentTrack} isPlaying={isPlaying} isPlayerLoading={isPlayerLoading}
                 liked={currentTrack ? likedIds.includes(currentTrack.id) : false} theme={theme}
                 onOpen={() => setPlayerExpanded(true)} onToggle={togglePlayback}
                 onNext={() => dispatch('player.next')}
@@ -346,7 +353,7 @@ function AppSurface() {
 
           {expanded && (
             <View style={[styles.tabletPlayer, { bottom: Math.max(insets.bottom, 12) }]}>
-              <MiniPlayer track={currentTrack} isPlaying={isPlaying}
+              <MiniPlayer track={currentTrack} isPlaying={isPlaying} isPlayerLoading={isPlayerLoading}
                 liked={currentTrack ? likedIds.includes(currentTrack.id) : false} theme={theme}
                 onOpen={() => setPlayerExpanded(true)} onToggle={togglePlayback}
                 onNext={() => dispatch('player.next')}
@@ -369,7 +376,9 @@ function AppSurface() {
               <>
                 <Image source={{ uri: currentTrack.artworkUri ?? photos.album }} style={styles.sheetArtwork as ImageStyle} />
                 <Text style={[styles.sheetTitle, { color: theme.ink }]} numberOfLines={1}>{currentTrack.title}</Text>
-                <Text style={[styles.bodyMuted, { color: theme.muted }]}>{currentTrack.artist} · {currentTrack.album}</Text>
+                <Text style={[styles.bodyMuted, { color: theme.muted }]}>
+                  {isPlayerLoading ? 'Loading stream...' : `${currentTrack.artist} · ${currentTrack.album}`}
+                </Text>
                 <PlayerProgress />
                 <View style={styles.playerActions}>
                   <Pressable style={styles.sheetControl} onPress={() => dispatch('player.next')}
@@ -377,8 +386,11 @@ function AppSurface() {
                     <Icon name="next" size={26} color={theme.ink} />
                   </Pressable>
                   <Pressable style={styles.sheetPlay} onPress={togglePlayback}
-                    accessibilityRole="button" accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
-                    <Icon name={isPlaying ? 'pause' : 'play'} size={25} color="#fff" />
+                    accessibilityRole="button" accessibilityLabel={isPlayerLoading ? 'Loading stream' : isPlaying ? 'Pause' : 'Play'}
+                    disabled={isPlayerLoading}>
+                    {isPlayerLoading
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Icon name={isPlaying ? 'pause' : 'play'} size={25} color="#fff" />}
                   </Pressable>
                   <Pressable style={styles.sheetControl} onPress={() => currentTrack && dispatch('library.toggleLiked', { trackId: currentTrack.id })}
                     accessibilityRole="button" accessibilityLabel={currentTrack && likedIds.includes(currentTrack.id) ? 'Unlike track' : 'Like track'}>
@@ -414,14 +426,20 @@ function AppSurface() {
 function PlayerProgress() {
   const positionMs = useMusicStore((store) => store.state.player.positionMs);
   const durationMs = useMusicStore((store) => store.state.player.durationMs);
+  const progress = useSharedValue(0);
 
-  return (
-    <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, {
-        width: `${durationMs > 0 ? Math.min(100, (positionMs / durationMs) * 100) : 0}%`,
-      }]} />
-    </View>
-  );
+  useEffect(() => {
+    progress.value = withTiming(
+      durationMs > 0 ? Math.min(100, (positionMs / durationMs) * 100) : 0,
+      { duration: 450 },
+    );
+  }, [durationMs, positionMs, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: `${progress.value}%`,
+  }));
+
+  return <View style={styles.progressTrack}><Animated.View style={[styles.progressFill, animatedStyle]} /></View>;
 }
 
 function HomeScreen({
@@ -517,9 +535,13 @@ function SearchScreen({
   onLike: (trackId: string) => void;
 }) {
   const [draftQuery, setDraftQuery] = useState(query);
+  useEffect(() => {
+    const timeout = setTimeout(() => onQueryChange(draftQuery), 400);
+    return () => clearTimeout(timeout);
+  }, [draftQuery, onQueryChange]);
+
   const changeQuery = (nextQuery: string) => {
     setDraftQuery(nextQuery);
-    onQueryChange(nextQuery);
   };
 
   return (
@@ -813,10 +835,11 @@ function TrackRow({
 }
 
 function MiniPlayer({
-  track, isPlaying, liked, theme, onOpen, onToggle, onNext, onLike,
+  track, isPlaying, isPlayerLoading, liked, theme, onOpen, onToggle, onNext, onLike,
 }: {
   track: TrackState | null;
   isPlaying: boolean;
+  isPlayerLoading: boolean;
   liked: boolean;
   theme: Theme;
   onOpen: () => void;
@@ -833,7 +856,7 @@ function MiniPlayer({
       <Pressable onPress={onOpen} style={styles.miniTrackMeta} accessibilityRole="button">
         <Text style={[styles.miniTrackTitle, { color: theme.ink }]} numberOfLines={1}>{track?.title ?? 'Choose a track'}</Text>
         <Text style={[styles.miniTrackSubtitle, { color: theme.muted }]} numberOfLines={1}>
-          {track ? `${track.artist} · ${track.album}` : 'Your local demo catalog'}
+          {isPlayerLoading ? 'Loading stream...' : track ? `${track.artist} · ${track.album}` : 'Your local demo catalog'}
         </Text>
       </Pressable>
       <Pressable onPress={onLike} style={styles.miniIconButton} accessibilityRole="button"
@@ -841,8 +864,11 @@ function MiniPlayer({
         <Icon name="heart" size={19} color={liked ? '#7955af' : theme.muted} />
       </Pressable>
       <Pressable onPress={onToggle} style={styles.miniPlayButton} accessibilityRole="button"
-        accessibilityLabel={isPlaying ? 'Pause' : 'Play'} disabled={!track}>
-        <Icon name={isPlaying ? 'pause' : 'play'} size={19} color="#fff" />
+        accessibilityLabel={isPlayerLoading ? 'Loading stream' : isPlaying ? 'Pause' : 'Play'}
+        disabled={!track || isPlayerLoading}>
+        {isPlayerLoading
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <Icon name={isPlaying ? 'pause' : 'play'} size={19} color="#fff" />}
       </Pressable>
       <Pressable onPress={onNext} style={styles.miniNextButton} accessibilityRole="button" accessibilityLabel="Next track">
         <Icon name="next" size={18} color={theme.ink} />

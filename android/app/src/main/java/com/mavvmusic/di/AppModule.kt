@@ -12,11 +12,9 @@ import com.mavvmusic.core.domain.ObserveMusicSettingsUseCase
 import com.mavvmusic.core.domain.PausePlaybackUseCase
 import com.mavvmusic.core.domain.PlaybackRepository
 import com.mavvmusic.core.domain.PlayTrackUseCase
-import com.mavvmusic.core.domain.ResolveStreamUseCase
 import com.mavvmusic.core.domain.ResumePlaybackUseCase
 import com.mavvmusic.core.domain.SearchTracksUseCase
 import com.mavvmusic.core.domain.SeekPlaybackUseCase
-import com.mavvmusic.core.domain.StreamResolver
 import com.mavvmusic.core.domain.SkipToNextUseCase
 import com.mavvmusic.core.domain.SetAutoCacheOnPlayUseCase
 import com.mavvmusic.core.domain.SettingsRepository
@@ -86,15 +84,11 @@ object AppModule {
     fun provideHomeFeedUseCase(repository: MusicCatalogRepository) = GetHomeFeedUseCase(repository)
 
     @Provides
-    fun provideResolveStreamUseCase(resolver: StreamResolver) = ResolveStreamUseCase(resolver)
-
-    @Provides
     fun providePlayTrackUseCase(
-        resolveStream: ResolveStreamUseCase,
         cache: CacheRepository,
         settings: SettingsRepository,
         playback: PlaybackRepository,
-    ) = PlayTrackUseCase(resolveStream, cache, settings, playback)
+    ) = PlayTrackUseCase(cache, settings, playback)
 
     @Provides
     fun providePausePlaybackUseCase(playback: PlaybackRepository) = PausePlaybackUseCase(playback)
