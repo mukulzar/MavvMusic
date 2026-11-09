@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.kapt'
+}
+
+android {
+    namespace 'com.mavvmusic.core.database'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    api project(':core:model')
+    api "androidx.room:room-ktx:$rootProject.ext.roomVersion"
+    kapt "androidx.room:room-compiler:$rootProject.ext.roomVersion"
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.internal.KaptWithoutKotlincTask).configureEach {
+    def sqliteTempDir = layout.buildDirectory.dir("tmp/sqlite").get().asFile
+    if (!sqliteTempDir.isDirectory() && !sqliteTempDir.mkdirs()) {
+        throw new GradleException("Unable to create the Room processor temp directory: ${sqliteTempDir}")
+    }
+    kaptProcessJvmArgs.add("-Dorg.sqlite.tmpdir=${sqliteTempDir.absolutePath}")
+}

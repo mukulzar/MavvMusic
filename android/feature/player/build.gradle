@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.kapt'
+}
+
+android {
+    namespace 'com.mavvmusic.feature.player'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    implementation project(':core:domain')
+    implementation project(':core:model')
+    implementation "androidx.media3:media3-exoplayer:$rootProject.ext.media3Version"
+    implementation "androidx.media3:media3-session:$rootProject.ext.media3Version"
+    implementation "androidx.core:core-ktx:1.16.0"
+    implementation "com.google.dagger:hilt-android:$rootProject.ext.hiltVersion"
+    kapt "com.google.dagger:hilt-android-compiler:$rootProject.ext.hiltVersion"
+}
+
+kapt {
+    correctErrorTypes true
+}

@@ -1,0 +1,33 @@
+buildscript {
+    ext {
+        buildToolsVersion = "37.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 37
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.2.0"
+        media3Version = "1.8.0"
+        roomVersion = "2.7.2"
+        lifecycleVersion = "2.9.2"
+        coroutinesVersion = "1.10.2"
+        hiltVersion = "2.56.2"
+        okhttpVersion = "4.12.0"
+        serializationVersion = "1.8.1"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("com.google.dagger:hilt-android-gradle-plugin:$hiltVersion")
+    }
+}
+
+subprojects {
+    ext.set("react.newArchEnabled", "true")
+}
+
+apply plugin: "com.facebook.react.rootproject"
