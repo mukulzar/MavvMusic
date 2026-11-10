@@ -21,12 +21,6 @@ import com.mavvmusic.core.domain.SettingsRepository
 import com.mavvmusic.feature.cache.AutoCacheRepository
 import com.mavvmusic.feature.player.Media3PlaybackRepository
 import com.mavvmusic.feature.player.PlaybackStateStore
-import com.mavvmusic.nativebridge.CacheViewModel
-import com.mavvmusic.nativebridge.HomeViewModel
-import com.mavvmusic.nativebridge.MusicMviViewModel
-import com.mavvmusic.nativebridge.PlayerViewModel
-import com.mavvmusic.nativebridge.SearchViewModel
-import com.mavvmusic.nativebridge.SettingsViewModel
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -104,50 +98,4 @@ object AppModule {
 
     @Provides
     fun provideClearCacheUseCase(cache: CacheRepository) = ClearCacheUseCase(cache)
-
-    @Provides
-    @Singleton
-    fun provideHomeViewModel(getHomeFeed: GetHomeFeedUseCase) = HomeViewModel(getHomeFeed)
-
-    @Provides
-    @Singleton
-    fun provideSearchViewModel(searchTracks: SearchTracksUseCase) = SearchViewModel(searchTracks)
-
-    @Provides
-    @Singleton
-    fun providePlayerViewModel(
-        playTrack: PlayTrackUseCase,
-        pausePlayback: PausePlaybackUseCase,
-        resumePlayback: ResumePlaybackUseCase,
-        seekPlayback: SeekPlaybackUseCase,
-        playback: PlaybackRepository,
-    ) = PlayerViewModel(
-        playTrack = playTrack,
-        pausePlayback = pausePlayback,
-        resumePlayback = resumePlayback,
-        seekPlayback = seekPlayback,
-        playbackRepository = playback,
-    )
-
-    @Provides
-    @Singleton
-    fun provideCacheViewModel(cache: CacheRepository, clearCache: ClearCacheUseCase) =
-        CacheViewModel(cache, clearCache)
-
-    @Provides
-    @Singleton
-    fun provideSettingsViewModel(
-        observeSettings: ObserveMusicSettingsUseCase,
-        setAutoCacheOnPlay: SetAutoCacheOnPlayUseCase,
-    ) = SettingsViewModel(observeSettings, setAutoCacheOnPlay)
-
-    @Provides
-    @Singleton
-    fun provideMusicMviViewModel(
-        home: HomeViewModel,
-        search: SearchViewModel,
-        player: PlayerViewModel,
-        cache: CacheViewModel,
-        settings: SettingsViewModel,
-    ) = MusicMviViewModel(home, search, player, cache, settings)
 }
