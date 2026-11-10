@@ -24,6 +24,26 @@ interface MusicCatalogRepository {
     suspend fun getHomeFeed(): List<Track>
     suspend fun search(query: String): List<Track>
     suspend fun getTrack(trackId: String): Track?
+    suspend fun getRadioQueue(seedVideoId: String): List<Track>
+}
+
+data class ListeningArtistProfile(
+    val artist: String,
+    val seedTrackId: String,
+    val playCount: Int,
+)
+
+data class ListeningGenreProfile(
+    val genre: String,
+    val playCount: Int,
+)
+
+interface ListeningHistoryRepository {
+    suspend fun topArtistsThisWeek(limit: Int): List<ListeningArtistProfile>
+    suspend fun topGenresThisWeek(limit: Int): List<ListeningGenreProfile>
+    suspend fun findTrack(trackId: String): Track?
+    suspend fun recordTrackPlayed(track: Track, timestampMs: Long)
+    suspend fun clearHistory()
 }
 
 interface StreamResolver {

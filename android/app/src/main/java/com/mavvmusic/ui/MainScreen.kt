@@ -1,9 +1,6 @@
 package com.mavvmusic.ui
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -18,11 +15,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mavvmusic.app.presentation.LibraryViewModel
+import com.mavvmusic.app.presentation.LibraryIntent
+import com.mavvmusic.app.presentation.LibrarySection
 import com.mavvmusic.app.presentation.PlayerViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -48,6 +46,7 @@ private val destinations = listOf(
 fun MainScreen() {
     val navController = rememberNavController()
     val playerViewModel: PlayerViewModel = hiltViewModel()
+    val libraryViewModel: LibraryViewModel = hiltViewModel()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -90,34 +89,28 @@ fun MainScreen() {
             startDestination = "home",
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable("home") { HomeScreen(playerViewModel) }
-            composable("search") { SearchScreen(playerViewModel) }
-            composable("library") { PlaceholderScreen("Library") }
-            composable("settings") { PlaceholderScreen("Settings") }
-        }
-    }
-}
-
-@Composable
-private fun PlaceholderScreen(title: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "$title screen",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            composable("home") {
+                HomeScreen(
+                    playerViewModel = playerViewModel,
+                    libraryViewModel = libraryViewModel,
+                    onOpenHistory = {
+                        libraryViewModel.onIntent(LibraryIntent.SelectSection(LibrarySection.HISTORY))
+                        navController.navigate("library") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenSettings = { navController.navigate("settings") },
+                    onOpenPlaylist = { playlistId ->
+                        libraryViewModel.onIntent(LibraryIntent.OpenPlaylist(playlistId))
+                        navController.navigate("library") {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable("search") { SearchScreen(playerViewModel, libraryViewModel) }
+            composable("library") { LibraryScreen(playerViewModel, libraryViewModel) }
+            composable("settings") { SettingsScreen(libraryViewModel) }
         }
     }
 }

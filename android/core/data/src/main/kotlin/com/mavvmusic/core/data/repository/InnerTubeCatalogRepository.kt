@@ -9,6 +9,7 @@ import com.mavvmusic.core.model.Artist
 import com.mavvmusic.core.model.Track
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -22,6 +23,7 @@ import javax.inject.Singleton
 
 private const val SONGS_FILTER = "EgWKAQIIAWoKEAkQChADEAQQBQ%3D%3D"
 private const val MUSIC_HOME_BROWSE_ID = "FEmusic_home"
+private const val MAX_RADIO_QUEUE_SIZE = 50
 private val DURATION_PATTERN = Regex("""(?:\d{1,2}:)?\d{1,2}:\d{2}""")
 private val SEPARATOR_TEXT = setOf("•", "·", "-", "|")
 
@@ -54,6 +56,27 @@ public class InnerTubeCatalogRepository @Inject constructor(
     override suspend fun getTrack(trackId: String): Track? =
         search(trackId).firstOrNull { it.id == trackId }
 
+    override suspend fun getRadioQueue(seedVideoId: String): List<Track> = withContext(ioDispatcher) {
+        require(seedVideoId.isNotBlank()) { "A seed track is required to create a radio queue." }
+        try {
+            val response = innerTubeClient.innerTube.next(
+                client = innerTubeClient.musicClient,
+                videoId = seedVideoId,
+                playlistId = "RDAMVM$seedVideoId",
+            )
+            val root = innerTubeClient.json.parseToJsonElement(response.bodyAsText())
+            root.musicItemRenderers()
+                .mapNotNull(JsonObject::toTrack)
+                .distinctBy(Track::id)
+                .take(MAX_RADIO_QUEUE_SIZE)
+                .toList()
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            Log.e("MavvMusicError", "InnerTubeX radio request failed.", error)
+            throw error
+        }
+    }
+
     override suspend fun getHomeFeed(): List<Track> = withContext(ioDispatcher) {
         try {
             val response = innerTubeClient.innerTube.browse(
@@ -81,6 +104,8 @@ private fun JsonElement.musicItemRenderers(): Sequence<JsonObject> = sequence {
         is JsonObject -> {
             val itemRenderer = this@musicItemRenderers["musicResponsiveListItemRenderer"]
                 ?: this@musicItemRenderers["musicTwoRowItemRenderer"]
+                ?: this@musicItemRenderers["musicPlaylistPanelVideoRenderer"]
+                ?: this@musicItemRenderers["playlistPanelVideoRenderer"]
             if (itemRenderer is JsonObject) {
                 yield(itemRenderer)
             } else {
@@ -99,8 +124,12 @@ private fun JsonObject.toTrack(): Track? {
         ?: this["title"].rendererText()
         ?: return null
     val metadataRuns = columns?.getOrNull(1)?.rendererRuns()
-        ?: this["subtitle"].rendererRuns()
-        .orEmpty()
+        ?.takeIf { it.isNotEmpty() }
+        ?: (
+            this["subtitle"].rendererRuns() +
+                this["longBylineText"].rendererRuns() +
+                this["shortBylineText"].rendererRuns()
+            )
     val meaningfulRuns = metadataRuns.filterNot { it.text in SEPARATOR_TEXT || it.text.isBlank() }
     val artistRun = meaningfulRuns.firstOrNull { it.pageType.contains("ARTIST") }
         ?: meaningfulRuns.firstOrNull()
@@ -112,6 +141,8 @@ private fun JsonObject.toTrack(): Track? {
     val durationMs = metadataRuns.asSequence()
         .mapNotNull { DURATION_PATTERN.find(it.text)?.value }
         .firstNotNullOfOrNull(::durationTextToMillis)
+        ?: this["lengthText"].rendererText()?.let { DURATION_PATTERN.find(it)?.value }
+            ?.let(::durationTextToMillis)
         ?: 0L
 
     return Track(
@@ -128,7 +159,21 @@ private fun JsonObject.toTrack(): Track? {
         ),
         durationMs = durationMs,
         artworkUri = artworkUri,
+        genre = findGenre(),
     )
+}
+
+private fun JsonObject.findGenre(): String? {
+    fun find(element: JsonElement): String? = when (element) {
+        is JsonObject -> {
+            element["genre"]?.stringValue()?.trim()?.takeIf(String::isNotEmpty)
+                ?: element["genreName"]?.stringValue()?.trim()?.takeIf(String::isNotEmpty)
+                ?: element.values.firstNotNullOfOrNull(::find)
+        }
+        is JsonArray -> element.firstNotNullOfOrNull(::find)
+        else -> null
+    }
+    return find(this)
 }
 
 private data class MusicTextRun(
@@ -156,7 +201,10 @@ private fun JsonElement?.rendererText(): String? {
 private fun JsonElement?.rendererRuns(): List<MusicTextRun> {
     val element = this as? JsonObject ?: return emptyList()
     val renderer = element["musicResponsiveListItemFlexColumnRenderer"]?.jsonObject ?: element
-    val text = renderer["text"]?.jsonObject ?: renderer["subtitle"]?.jsonObject ?: return emptyList()
+    val text = renderer["text"]?.jsonObject
+        ?: renderer["subtitle"]?.jsonObject
+        ?: renderer.takeIf { it["runs"] is JsonArray }
+        ?: return emptyList()
     return text["runs"]?.jsonArray?.mapNotNull { runElement ->
         val run = runElement as? JsonObject ?: return@mapNotNull null
         val value = run["text"]?.stringValue()?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null

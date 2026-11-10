@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -123,6 +124,17 @@ fun MiniPlayer(
                             contentDescription = if (playback.isPlaying) "Pause" else "Play",
                         )
                     }
+                }
+                IconButton(
+                    onClick = {
+                        track?.let { playerViewModel.onIntent(PlayerIntent.StartRadio(it)) }
+                    },
+                    enabled = track != null && !isLoading,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Radio,
+                        contentDescription = track?.let { "Start mix from ${it.title}" } ?: "Start mix",
+                    )
                 }
                 IconButton(
                     onClick = { playerViewModel.onIntent(PlayerIntent.Next) },

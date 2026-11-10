@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.mavvmusic.core.database.CachedTrackEntity
 import com.mavvmusic.core.database.MusicDao
+import com.mavvmusic.core.database.toMetadataEntity
 import com.mavvmusic.core.domain.CacheRepository
 import com.mavvmusic.core.domain.ResolvedStream
 import com.mavvmusic.core.domain.StreamHttpException
@@ -26,6 +27,7 @@ class AutoCacheRepository(
 
     override suspend fun cache(track: Track, stream: ResolvedStream): CachedTrack =
         withContext(Dispatchers.IO) {
+            musicDao.upsertTrackMetadata(track.toMetadataEntity())
             musicDao.findCachedTrack(track.id)?.let { existing ->
                 val file = File(Uri.parse(existing.filePath).path.orEmpty())
                 if (file.isFile) return@withContext existing.toCachedTrack()

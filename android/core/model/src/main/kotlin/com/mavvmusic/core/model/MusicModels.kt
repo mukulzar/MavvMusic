@@ -25,6 +25,7 @@ data class Track(
     val album: Album,
     val durationMs: Long,
     val artworkUri: String?,
+    val genre: String? = null,
 )
 
 data class PlaybackState(

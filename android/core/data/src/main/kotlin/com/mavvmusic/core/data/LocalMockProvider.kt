@@ -76,6 +76,12 @@ class LocalMockProvider : MusicCatalogRepository, StreamResolver {
     override suspend fun getTrack(trackId: String): Track? =
         tracks.firstOrNull { it.id == trackId }
 
+    override suspend fun getRadioQueue(seedVideoId: String): List<Track> {
+        val seedIndex = tracks.indexOfFirst { it.id == seedVideoId }
+        if (seedIndex < 0) return emptyList()
+        return (tracks.drop(seedIndex + 1) + tracks.take(seedIndex)).take(20)
+    }
+
     override suspend fun resolve(trackId: String): ResolvedStream {
         requireNotNull(getTrack(trackId)) { "Track $trackId is not available in the local demo catalog." }
         return ResolvedStream(

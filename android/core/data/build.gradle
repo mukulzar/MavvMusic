@@ -16,6 +16,7 @@ android {
 dependencies {
     implementation project(':core:domain')
     implementation project(':core:model')
+    implementation project(':core:database')
     api "com.squareup.okhttp3:okhttp:$rootProject.ext.okhttpVersion"
     api "org.jetbrains.kotlinx:kotlinx-serialization-json:$rootProject.ext.serializationVersion"
     implementation "com.github.MetrolistGroup.innertubex:innertubex:v0.11.6"

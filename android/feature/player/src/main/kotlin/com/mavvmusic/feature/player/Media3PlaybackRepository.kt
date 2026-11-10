@@ -84,5 +84,6 @@ class Media3PlaybackRepository(
         put("albumId", album.id)
         put("durationMs", durationMs)
         put("artworkUri", artworkUri)
+        put("genre", genre)
     }
 }

@@ -8,7 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,6 +26,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mavvmusic.app.presentation.PlayerIntent
 import com.mavvmusic.app.presentation.PlayerViewModel
+import com.mavvmusic.app.presentation.LibraryIntent
+import com.mavvmusic.app.presentation.LibraryViewModel
 import com.mavvmusic.app.presentation.SearchIntent
 import com.mavvmusic.app.presentation.SearchViewModel
 import com.mavvmusic.core.model.Track
@@ -28,9 +35,11 @@ import com.mavvmusic.core.model.Track
 @Composable
 fun SearchScreen(
     playerViewModel: PlayerViewModel,
+    libraryViewModel: LibraryViewModel,
     searchViewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by searchViewModel.state.collectAsStateWithLifecycle()
+    val libraryState by libraryViewModel.state.collectAsStateWithLifecycle()
     val errorMessage = state.error
 
     Column(
@@ -66,9 +75,23 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 items(state.results, key = Track::id) { track ->
-                    TrackRow(track = track) {
-                        playerViewModel.onIntent(PlayerIntent.Play(track, state.results))
-                    }
+                    val isLiked = libraryState.likedTracks.any { it.id == track.id }
+                    TrackRow(
+                        track = track,
+                        onClick = { playerViewModel.onIntent(PlayerIntent.Play(track, state.results)) },
+                        trailingContent = {
+                            IconButton(
+                                onClick = { libraryViewModel.onIntent(LibraryIntent.ToggleLiked(track)) },
+                            ) {
+                                Icon(
+                                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                    contentDescription = if (isLiked) "Unlike ${track.title}" else "Like ${track.title}",
+                                    tint = if (isLiked) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                    )
                 }
             }
         }

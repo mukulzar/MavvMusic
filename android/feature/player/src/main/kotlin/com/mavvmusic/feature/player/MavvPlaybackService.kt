@@ -408,6 +408,7 @@ class MavvPlaybackService : MediaSessionService() {
                 val albumId = item.getString("albumId")
                 val albumTitle = item.getString("album")
                 val artworkUri = item.optString("artworkUri").takeUnless { it.isEmpty() || it == "null" }
+                val genre = item.optString("genre").takeUnless { it.isBlank() || it == "null" }
                 put(
                     id,
                     Track(
@@ -417,6 +418,7 @@ class MavvPlaybackService : MediaSessionService() {
                         album = Album(albumId, albumTitle, artworkUri),
                         durationMs = item.getLong("durationMs"),
                         artworkUri = artworkUri,
+                        genre = genre,
                     ),
                 )
             }
