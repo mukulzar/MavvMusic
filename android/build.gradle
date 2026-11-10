@@ -19,18 +19,27 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
-        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("com.android.tools.build:gradle:9.2.1")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath("org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinVersion")
         classpath("com.google.dagger:hilt-android-gradle-plugin:$hiltVersion")
     }
 }
 
 subprojects {
-    ext.set("react.newArchEnabled", "true")
+    afterEvaluate {
+        def androidExtension = extensions.findByName("android")
+        if (androidExtension != null) {
+            androidExtension.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_21
+                targetCompatibility JavaVersion.VERSION_21
+            }
+        }
+    }
+
     configurations.configureEach {
         if (name.startsWith("kapt")) {
-            resolutionStrategy.force "org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21"
+            resolutionStrategy.force "org.jetbrains.kotlin:kotlin-metadata-jvm:$kotlinVersion"
         }
     }
 }
@@ -49,5 +58,3 @@ allprojects {
         }
     }
 }
-
-apply plugin: "com.facebook.react.rootproject"

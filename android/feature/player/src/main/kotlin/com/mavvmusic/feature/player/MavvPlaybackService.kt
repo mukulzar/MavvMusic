@@ -29,6 +29,7 @@ import com.mavvmusic.core.model.Artist
 import com.mavvmusic.core.model.CacheStatus
 import com.mavvmusic.core.model.Track
 import dagger.hilt.android.EntryPointAccessors
+import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,20 +51,26 @@ class MavvPlaybackService : MediaSessionService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     
     private var playbackSetupJob: Job? = null
+    private var prefetchJob: Job? = null
     private var streamRefreshJob: Job? = null
     private var activeTrackId: String? = null
+    private var pendingTrackId: String? = null
     private var activeCachedTrackId: String? = null
     private var activeCacheOnPlay = false
+    private var playRequestGeneration = 0L
     
     private var activeQueueTracks: Map<String, Track> = emptyMap()
     private var activeQueueIds: List<String> = emptyList()
-    private var isPrefetching = false
+    private var prefetchingTrackId: String? = null
 
+    private data class CachedStreamUri(val uri: String, val expiresAtMs: Long?)
+
+    private val resolvedStreamUris = LinkedHashMap<String, CachedStreamUri>()
     private val refreshedStreamUris = mutableSetOf<String>()
 
     private val positionTicker = object : Runnable {
         override fun run() {
-            if (::player.isInitialized && player.isPlaying) {
+            if (::player.isInitialized && player.isPlaying && pendingTrackId == null) {
                 playbackStateStore.updatePosition(
                     positionMs = player.currentPosition,
                     durationMs = player.duration,
@@ -76,12 +83,31 @@ class MavvPlaybackService : MediaSessionService() {
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (pendingTrackId != null) return
             playbackStateStore.updatePosition(player.currentPosition, player.duration, isPlaying)
             mainHandler.removeCallbacks(positionTicker)
             if (isPlaying) mainHandler.post(positionTicker)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            val transitionedTrackId = player.currentMediaItem?.mediaId
+            if (playbackState == Player.STATE_READY && pendingTrackId == transitionedTrackId) {
+                pendingTrackId = null
+                val track = transitionedTrackId?.let(activeQueueTracks::get)
+                if (track != null) {
+                    playbackStateStore.setCurrent(
+                        playbackStateStore.state.value.copy(
+                            currentTrack = track,
+                            positionMs = player.currentPosition.coerceAtLeast(0),
+                            durationMs = player.duration.takeIf { it > 0 } ?: track.durationMs,
+                            isPlaying = player.isPlaying,
+                            isLoading = false,
+                            error = null,
+                        ),
+                    )
+                }
+            }
+            if (pendingTrackId != null) return
             playbackStateStore.updatePosition(
                 player.currentPosition,
                 player.duration,
@@ -90,8 +116,13 @@ class MavvPlaybackService : MediaSessionService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            val track = mediaItem?.let { activeQueueTracks[it.mediaId] } ?: return
+            val mediaId = mediaItem?.mediaId ?: return
+            if (pendingTrackId != null && pendingTrackId != mediaId) return
+            val track = activeQueueTracks[mediaId] ?: return
             activeTrackId = track.id
+            if (pendingTrackId == track.id && player.playbackState == Player.STATE_READY) {
+                pendingTrackId = null
+            }
             val currentState = playbackStateStore.state.value
             playbackStateStore.setCurrent(
                 currentState.copy(
@@ -99,7 +130,7 @@ class MavvPlaybackService : MediaSessionService() {
                     positionMs = player.currentPosition.coerceAtLeast(0),
                     durationMs = player.duration.takeIf { it > 0 } ?: track.durationMs,
                     isPlaying = player.isPlaying,
-                    isLoading = false,
+                    isLoading = pendingTrackId == track.id || player.playbackState != Player.STATE_READY,
                     cacheStatus = if (track.id == activeCachedTrackId) {
                         CacheStatus.CACHED
                     } else {
@@ -113,6 +144,7 @@ class MavvPlaybackService : MediaSessionService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            if (pendingTrackId != null && pendingTrackId != player.currentMediaItem?.mediaId) return
             if (error.isForbiddenHttpStatus() && refreshExpiredStream()) return
             playbackStateStore.reportError(
                 error.localizedMessage ?: "Playback failed. Try playing this track again.",
@@ -197,6 +229,8 @@ class MavvPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(positionTicker)
+        playbackSetupJob?.cancel()
+        prefetchJob?.cancel()
         streamRefreshJob?.cancel()
         serviceScope.cancel()
         mediaSession?.release()
@@ -212,65 +246,73 @@ class MavvPlaybackService : MediaSessionService() {
             "The player service received no track ID."
         }
         val queueIds = intent.getStringArrayListExtra(EXTRA_QUEUE_IDS).orEmpty()
-        activeQueueIds = queueIds
-        
-        val currentIndex = queueIds.indexOf(trackId)
-        val trackIdsToPrepare = if (currentIndex >= 0) {
-            queueIds.drop(currentIndex).take(2)
-        } else {
-            listOf(trackId)
-        }
         val cachedUri = intent.getStringExtra(EXTRA_URI)
-        activeCachedTrackId = trackId.takeIf { cachedUri != null }
         val queueTracks = parseQueueTracks(intent.getStringExtra(EXTRA_QUEUE_TRACKS))
         require(trackId in queueTracks) { "The playback queue is missing track $trackId." }
-        activeQueueTracks = queueTracks
-        activeTrackId = trackId
-        activeCacheOnPlay = intent.getBooleanExtra(EXTRA_CACHE_ON_PLAY, false)
-        
+
+        val existingPrefetchJob = prefetchJob.takeIf {
+            prefetchingTrackId == trackId && it?.isActive == true
+        }
         playbackSetupJob?.cancel()
         streamRefreshJob?.cancel()
         streamRefreshJob = null
+        val requestGeneration = ++playRequestGeneration
+        pendingTrackId = trackId
         refreshedStreamUris.clear()
-        isPrefetching = false
-        player.stop()
-        player.clearMediaItems()
-        playbackStateStore.setLoading(true)
-        
+        if (existingPrefetchJob == null) {
+            prefetchJob?.cancel()
+            prefetchJob = null
+            prefetchingTrackId = null
+        }
+
+        activeQueueIds = queueIds
+        activeQueueTracks = queueTracks
+        activeCachedTrackId = trackId.takeIf { cachedUri != null }
+        activeCacheOnPlay = intent.getBooleanExtra(EXTRA_CACHE_ON_PLAY, false)
+
+        val queuedIndex = (0 until player.mediaItemCount)
+            .firstOrNull { player.getMediaItemAt(it).mediaId == trackId }
+        if (queuedIndex != null) {
+            activeTrackId = trackId
+            if (player.currentMediaItem?.mediaId == trackId) {
+                pendingTrackId = null
+                playbackStateStore.setCurrent(
+                    playbackStateStore.state.value.copy(isLoading = false, error = null),
+                )
+            }
+            player.seekTo(queuedIndex, 0L)
+            player.play()
+            return
+        }
+
         playbackSetupJob = serviceScope.launch {
             try {
-                val resolvedItems = mutableListOf<MediaItem>()
-                for ((index, id) in trackIdsToPrepare.withIndex()) {
-                    val track = queueTracks[id] ?: break
-                    try {
-                        val uri = if (index == 0 && cachedUri != null) {
-                            cachedUri
-                        } else {
-                            withContext(Dispatchers.IO) { streamResolver.resolve(id).uri }
-                        }
-                        resolvedItems += createMediaItem(track, uri)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        if (index == 0) throw error
-                        android.util.Log.w(
-                            "MavvMusicPlay",
-                            "Could not pre-buffer next track $id; playing current track only.",
-                            error,
-                        )
-                        break
-                    }
+                existingPrefetchJob?.join()
+                if (!isActive || playRequestGeneration != requestGeneration) return@launch
+                val resolvedQueueIndex = (0 until player.mediaItemCount)
+                    .firstOrNull { player.getMediaItemAt(it).mediaId == trackId }
+                if (resolvedQueueIndex != null) {
+                    activeTrackId = trackId
+                    player.seekTo(resolvedQueueIndex, 0L)
+                    player.play()
+                    return@launch
                 }
-                if (!isActive || activeTrackId != trackId) return@launch
-                require(resolvedItems.isNotEmpty()) { "No playable tracks were resolved." }
-                player.setMediaItems(resolvedItems, 0, 0L)
-                playbackStateStore.setLoading(false)
+
+                val uri = cachedUri ?: resolveStreamUri(trackId)
+                if (!isActive || playRequestGeneration != requestGeneration) return@launch
+
+                player.stop()
+                player.clearMediaItems()
+                activeTrackId = trackId
+                val track = queueTracks.getValue(trackId)
+                player.setMediaItem(createMediaItem(track, uri))
                 player.prepare()
                 player.play()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (activeTrackId == trackId) {
+                if (playRequestGeneration == requestGeneration) {
+                    pendingTrackId = null
                     playbackStateStore.reportError(
                         error.message ?: "Playback could not be prepared.",
                     )
@@ -280,11 +322,11 @@ class MavvPlaybackService : MediaSessionService() {
     }
 
     private fun prefetchNextTrack(currentId: String) {
-        if (isPrefetching) return
         val currentIndex = activeQueueIds.indexOf(currentId)
         if (currentIndex == -1 || currentIndex + 1 >= activeQueueIds.size) return
         
         val nextTrackId = activeQueueIds[currentIndex + 1]
+        if (prefetchingTrackId == nextTrackId && prefetchJob?.isActive == true) return
         
         // Check if already in player queue
         for (i in 0 until player.mediaItemCount) {
@@ -293,11 +335,11 @@ class MavvPlaybackService : MediaSessionService() {
             }
         }
         
-        isPrefetching = true
-        serviceScope.launch {
+        prefetchingTrackId = nextTrackId
+        prefetchJob = serviceScope.launch {
             try {
                 val nextTrack = activeQueueTracks[nextTrackId] ?: return@launch
-                val uri = withContext(Dispatchers.IO) { streamResolver.resolve(nextTrackId).uri }
+                val uri = resolveStreamUri(nextTrackId)
                 val mediaItem = createMediaItem(nextTrack, uri)
                 
                 // Double check before adding
@@ -310,12 +352,33 @@ class MavvPlaybackService : MediaSessionService() {
                 if (!queued) {
                     player.addMediaItem(mediaItem)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("MavvMusicPlay", "Failed to prefetch next track", e)
             } finally {
-                isPrefetching = false
+                if (prefetchingTrackId == nextTrackId) {
+                    prefetchingTrackId = null
+                    prefetchJob = null
+                }
             }
         }
+    }
+
+    private suspend fun resolveStreamUri(trackId: String): String {
+        val now = System.currentTimeMillis()
+        val cached = resolvedStreamUris[trackId]
+        if (cached != null && (cached.expiresAtMs == null || cached.expiresAtMs > now)) {
+            return cached.uri
+        }
+        if (cached != null) resolvedStreamUris.remove(trackId)
+
+        val stream = withContext(Dispatchers.IO) { streamResolver.resolve(trackId) }
+        resolvedStreamUris[trackId] = CachedStreamUri(stream.uri, stream.expiresAtMs)
+        while (resolvedStreamUris.size > MAX_RESOLVED_STREAMS) {
+            resolvedStreamUris.remove(resolvedStreamUris.keys.first())
+        }
+        return stream.uri
     }
 
     private fun createMediaItem(track: Track, uri: String) = MediaItem.Builder()
@@ -371,9 +434,14 @@ class MavvPlaybackService : MediaSessionService() {
         val wasPlaying = player.playWhenReady
         streamRefreshJob = serviceScope.launch {
             try {
+                resolvedStreamUris.remove(trackId)
                 val refreshedStream = withContext(Dispatchers.IO) {
                     streamResolver.resolve(trackId)
                 }
+                resolvedStreamUris[trackId] = CachedStreamUri(
+                    refreshedStream.uri,
+                    refreshedStream.expiresAtMs,
+                )
                 if (!isActive || activeTrackId != trackId) return@launch
                 val itemToRefresh = player.currentMediaItem ?: return@launch
                 val replacement = itemToRefresh.buildUpon()
@@ -421,6 +489,7 @@ class MavvPlaybackService : MediaSessionService() {
         private const val PLACEHOLDER_NOTIFICATION_ID = 1001
         private const val PLAYBACK_CHANNEL_ID = "mavv_playback_channel"
         private const val HTTP_FORBIDDEN = 403
-        private const val POSITION_UPDATE_INTERVAL_MS = 500L
+        private const val POSITION_UPDATE_INTERVAL_MS = 1000L
+        private const val MAX_RESOLVED_STREAMS = 20
     }
 }
